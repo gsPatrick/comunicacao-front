@@ -37,7 +37,7 @@ export function FormDialog({ open, onOpenChange, initialData, onSave }) {
           const response = await api.get('/companies');
           setCompanies(response.data.companies || []);
         } catch (error) {
-          toast.error("Falha ao carregar a lista de clientes.");
+          toast.error("Falha ao carregar la lista de clientes.");
         } finally {
           setIsListsLoading(false);
         }

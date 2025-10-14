@@ -1,12 +1,11 @@
 "use client"
 
 import Link from 'next/link';
-import { UserPlus, UserMinus, Repeat, MapPin } from 'lucide-react'; // 1. Importar o novo ícone
+import { UserPlus, UserMinus, Repeat, MapPin } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/card';
 import { useAuth } from '../../../../hooks/useAuth';
 import { Skeleton } from '../../../../components/ui/skeleton';
 
-// 2. A configuração de acesso por perfil define quais cards cada usuário pode ver.
 const requestTypes = [
   {
     href: "/solicitacoes/nova/admissao",
@@ -29,7 +28,7 @@ const requestTypes = [
     icon: Repeat,
     profiles: ['ADMIN', 'RH', 'GESTAO', 'SOLICITANTE'],
   },
-  { // 3. Adicionar o novo tipo de solicitação ao array de configuração
+  {
     href: "/solicitacoes/nova/troca-de-local",
     title: "Troca de Local",
     description: "Solicitar a mudança de local de um colaborador.",
@@ -49,7 +48,9 @@ export default function NovaSolicitacaoPage() {
                 <Skeleton className="h-8 w-64 mx-auto" />
                 <Skeleton className="h-4 w-96 mx-auto mt-4" />
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto">
+            {/* --- MUDANÇA APLICADA TAMBÉM NO SKELETON PARA CONSISTÊNCIA --- */}
+            <div className="grid gap-6 sm:grid-cols-2 max-w-3xl mx-auto">
+                <Skeleton className="h-40 w-full" />
                 <Skeleton className="h-40 w-full" />
                 <Skeleton className="h-40 w-full" />
                 <Skeleton className="h-40 w-full" />
@@ -58,7 +59,6 @@ export default function NovaSolicitacaoPage() {
     );
   }
 
-  // 4. A lógica de filtragem continua a mesma, agora incluindo o novo tipo
   const availableRequestTypes = requestTypes.filter(type => type.profiles.includes(user.profile));
 
   return (
@@ -70,7 +70,8 @@ export default function NovaSolicitacaoPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto">
+      {/* --- MUDANÇA PRINCIPAL APLICADA AQUI --- */}
+      <div className="grid gap-6 sm:grid-cols-2 max-w-3xl mx-auto">
         {availableRequestTypes.map((type) => (
           <Link href={type.href} key={type.title} className="focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-lg">
             <Card className="h-full hover:border-primary hover:shadow-lg transition-all cursor-pointer">

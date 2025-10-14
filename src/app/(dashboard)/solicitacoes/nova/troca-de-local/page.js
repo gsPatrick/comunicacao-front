@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon } from 'lucide-react';
@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale';
 
 import { cn } from '../../../../../lib/utils';
 import api from '../../../../../lib/api';
+import { useAuth } from '../../../../../hooks/useAuth';
 import { Button } from "../../../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../../../components/ui/card";
 import { Input } from "../../../../../components/ui/input";
@@ -18,18 +19,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Popover, PopoverTrigger, PopoverContent } from '../../../../../components/ui/popover';
 import { Calendar } from '../../../../../components/ui/calendar';
 import { Separator } from '../../../../../components/ui/separator';
-import { SearchableSelect } from '../components/SearchableSelect'; // <-- MUDANÇA
+import { SearchableSelect } from '../components/SearchableSelect';
 
 export default function FormTrocaDeLocalPage() {
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const router = useRouter();
 
+  // Estados para os filtros em cascata
+  const [companies, setCompanies] = useState([]);
+  const [contracts, setContracts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [allWorkLocations, setAllWorkLocations] = useState([]);
   
-  const [availableWorkLocations, setAvailableWorkLocations] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [selectedContract, setSelectedContract] = useState('');
   
+  // Estados para os dados selecionados
+  const [availableWorkLocations, setAvailableWorkLocations] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   const [formData, setFormData] = useState({ 
@@ -39,25 +47,73 @@ export default function FormTrocaDeLocalPage() {
       suggestedDate: null 
   });
 
+  // 1. Busca inicial de Clientes e todos os Locais de Trabalho
   useEffect(() => {
     const fetchInitialData = async () => {
+      if (!user) return;
       setIsDataLoading(true);
       try {
-        const [employeesRes, locationsRes] = await Promise.all([
-          api.get('/employees?all=true'),
-          api.get('/work-locations?all=true')
-        ]);
-        setEmployees(employeesRes.data.employees || []);
+        let companiesData = [];
+        if (user.profile === 'SOLICITANTE' || user.profile === 'GESTAO') {
+            const response = await api.get(`/associations/users/${user.id}/companies`);
+            companiesData = response.data || [];
+        } else {
+            const response = await api.get('/companies?all=true');
+            companiesData = response.data.companies || [];
+        }
+        setCompanies(companiesData);
+
+        const locationsRes = await api.get('/work-locations?all=true');
         setAllWorkLocations(locationsRes.data.workLocations || []);
       } catch (error) {
-        toast.error("Falha ao carregar os dados necessários para o formulário.");
-        console.error("Erro ao buscar dados iniciais:", error);
+        toast.error("Falha ao carregar os dados de apoio.");
       } finally {
         setIsDataLoading(false);
       }
     };
     fetchInitialData();
-  }, []);
+  }, [user]);
+
+  // 2. Busca Contratos quando um Cliente é selecionado
+  useEffect(() => {
+    const fetchContracts = async () => {
+      if (selectedCompany) {
+        setIsDataLoading(true);
+        setContracts([]);
+        setEmployees([]);
+        setSelectedContract('');
+        handleChange('employeeId', '');
+        try {
+          const response = await api.get(`/contracts?companyId=${selectedCompany}&all=true`);
+          setContracts(response.data.contracts || []);
+        } catch (error) { toast.error("Falha ao carregar contratos."); } 
+        finally { setIsDataLoading(false); }
+      } else {
+        setContracts([]);
+        setEmployees([]);
+      }
+    };
+    fetchContracts();
+  }, [selectedCompany]);
+
+  // 3. Busca Colaboradores quando um Contrato é selecionado
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      if (selectedContract) {
+        setIsDataLoading(true);
+        setEmployees([]);
+        handleChange('employeeId', '');
+        try {
+          const response = await api.get(`/employees?contractId=${selectedContract}&all=true`);
+          setEmployees(response.data.employees || []);
+        } catch (error) { toast.error("Falha ao carregar colaboradores."); } 
+        finally { setIsDataLoading(false); }
+      } else {
+        setEmployees([]);
+      }
+    };
+    fetchEmployees();
+  }, [selectedContract]);
 
   const handleChange = (id, value) => {
     setFormData(prev => ({ ...prev, [id]: value }));
@@ -67,11 +123,13 @@ export default function FormTrocaDeLocalPage() {
     const employee = employees.find(e => e.id === employeeId);
     setSelectedEmployee(employee || null);
     handleChange('employeeId', employeeId);
-
     handleChange('newWorkLocationId', ''); 
 
     if (employee) {
-      const availableLocations = allWorkLocations.filter(loc => loc.id !== employee.workLocationId);
+      // **LÓGICA CORRIGIDA**: Filtra locais apenas do mesmo contrato do colaborador
+      const availableLocations = allWorkLocations.filter(loc => 
+        loc.contractId === employee.contractId && loc.id !== employee.workLocationId
+      );
       setAvailableWorkLocations(availableLocations);
     } else {
       setAvailableWorkLocations([]);
@@ -84,7 +142,6 @@ export default function FormTrocaDeLocalPage() {
       toast.warning("Por favor, selecione um colaborador.");
       return;
     }
-
     if (formData.suggestedDate && new Date(formData.suggestedDate) < new Date().setHours(0, 0, 0, 0)) {
         toast.error("A data sugerida para a mudança não pode ser uma data passada.");
         return;
@@ -96,7 +153,7 @@ export default function FormTrocaDeLocalPage() {
         ...formData,
         companyId: selectedEmployee.contract.companyId,
         contractId: selectedEmployee.contractId,
-        workLocationId: selectedEmployee.workLocationId,
+        workLocationId: selectedEmployee.workLocationId, // Local de trabalho original
         positionId: selectedEmployee.positionId,
       };
       
@@ -109,7 +166,6 @@ export default function FormTrocaDeLocalPage() {
       router.push('/solicitacoes');
     } catch (error) {
       toast.error(error.response?.data?.error || "Ocorreu um erro ao enviar a solicitação.");
-      console.error("Erro no submit do formulário:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -118,6 +174,11 @@ export default function FormTrocaDeLocalPage() {
   const employeeOptions = employees.map(emp => ({
     value: emp.id,
     label: `${emp.name} (Matrícula: ${emp.registration})`
+  }));
+
+  const workLocationOptions = availableWorkLocations.map(loc => ({
+    value: loc.id,
+    label: loc.name
   }));
 
   return (
@@ -129,6 +190,23 @@ export default function FormTrocaDeLocalPage() {
             <CardDescription>Selecione o colaborador, o novo local desejado e justifique o motivo da mudança.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="companyId">Cliente</Label>
+                <Select value={selectedCompany} onValueChange={setSelectedCompany} disabled={isDataLoading}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
+                  <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.tradeName || c.corporateName}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contractId">Contrato</Label>
+                <Select value={selectedContract} onValueChange={setSelectedContract} disabled={isDataLoading || !selectedCompany}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o contrato" /></SelectTrigger>
+                  <SelectContent>{contracts.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="employeeId" className="font-semibold">Colaborador</Label>
               <SearchableSelect
@@ -137,7 +215,7 @@ export default function FormTrocaDeLocalPage() {
                 value={formData.employeeId}
                 onChange={handleEmployeeChange}
                 placeholder={isDataLoading ? "Carregando..." : "Selecione um colaborador"}
-                disabled={isDataLoading}
+                disabled={isDataLoading || !selectedContract}
               />
             </div>
             
@@ -151,18 +229,16 @@ export default function FormTrocaDeLocalPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="newWorkLocationId" className="required">Local de Trabalho Desejado</Label>
-                    <Select onValueChange={(value) => handleChange('newWorkLocationId', value)} value={formData.newWorkLocationId} disabled={!selectedEmployee} required>
-                        <SelectTrigger id="newWorkLocationId">
-                            <SelectValue placeholder="Selecione o novo local" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableWorkLocations.length > 0 ? (
-                            availableWorkLocations.map(loc => (<SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>))
-                          ) : (
-                            <div className="p-4 text-center text-sm text-muted-foreground">Nenhum outro local disponível.</div>
-                          )}
-                        </SelectContent>
-                    </Select>
+                    {/* **COMPONENTE SUBSTITUÍDO** por SearchableSelect */}
+                    <SearchableSelect
+                        id="newWorkLocationId"
+                        options={workLocationOptions}
+                        value={formData.newWorkLocationId}
+                        onChange={(value) => handleChange('newWorkLocationId', value)}
+                        placeholder="Selecione o novo local"
+                        disabled={!selectedEmployee}
+                        required
+                    />
                   </div>
                 </div>
               </div>
@@ -203,7 +279,7 @@ export default function FormTrocaDeLocalPage() {
                 </Button>
                 <Button type="submit" disabled={isSubmitting || isDataLoading}>
                   {(isSubmitting || isDataLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {isSubmitting ? "Enviando..." : (isDataLoading ? "Carregando Dados..." : "Enviar Solicitação")}
+                  {isSubmitting ? "Enviando..." : (isDataLoading ? "Aguarde..." : "Enviar Solicitação")}
                 </Button>
             </div>
           </CardContent>

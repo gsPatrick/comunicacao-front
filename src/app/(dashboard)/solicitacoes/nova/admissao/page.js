@@ -26,10 +26,11 @@ export default function FormAdmissaoPage() {
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedContract, setSelectedContract] = useState('');
 
-  // O campo 'positionId' foi removido do estado inicial
+  // 1. ADICIONADO CAMPO 'shift' AO ESTADO INICIAL
   const [formData, setFormData] = useState({
     companyId: '', contractId: '', workLocationId: '',
     candidateName: '', candidateCpf: '', candidatePhone: '', reason: '',
+    shift: '', // <-- NOVO CAMPO ADICIONADO
   });
 
   useEffect(() => {
@@ -99,7 +100,7 @@ export default function FormAdmissaoPage() {
     event.preventDefault();
     setIsLoading(true);
     try {
-      // O campo 'positionId' não é mais enviado no payload
+      // O 'formData' agora inclui o campo 'shift' e será enviado automaticamente
       await api.post('/requests/admission', formData);
       toast.success("Solicitação de admissão enviada com sucesso!");
       router.push('/solicitacoes');
@@ -125,9 +126,10 @@ export default function FormAdmissaoPage() {
             </div>
             <div className="space-y-2"><Label htmlFor="candidatePhone">Telefone do Candidato</Label><Input id="candidatePhone" value={formData.candidatePhone} onChange={(e) => handleChange('candidatePhone', e.target.value)} required /></div>
             <div className="space-y-2">
-              <Label htmlFor="companyId">Empresa</Label>
+              {/* 2. ALTERADO "Empresa" PARA "Cliente" */}
+              <Label htmlFor="companyId">Cliente</Label>
               <Select value={selectedCompany} onValueChange={(value) => { setSelectedCompany(value); handleChange('companyId', value); }} disabled={isDataLoading} required>
-                <SelectTrigger><SelectValue placeholder="Selecione a empresa" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
                 <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.corporateName}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -147,7 +149,19 @@ export default function FormAdmissaoPage() {
                     </Select>
                 </div>
             </div>
-            {/* --- CAMPO DE CATEGORIA REMOVIDO DAQUI --- */}
+            
+            {/* 3. ADICIONADO NOVO CAMPO DE TEXTO PARA TURNO/ESCALA/HORÁRIO */}
+            <div className="space-y-2">
+                <Label htmlFor="shift">Turno/Escala/Horário de Trabalho</Label>
+                <Input 
+                    id="shift" 
+                    value={formData.shift} 
+                    onChange={(e) => handleChange('shift', e.target.value)} 
+                    placeholder="Ex: Seg a Sex, 08h-18h / Escala 12x36 Noturno" 
+                    required 
+                />
+            </div>
+
             <div className="space-y-2"><Label htmlFor="reason">Motivo / Justificativa</Label><Textarea id="reason" value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} required /></div>
             <div className="flex justify-end gap-4 pt-4">
                 <Button variant="outline" type="button" onClick={() => router.push('/solicitacoes/nova')} disabled={isLoading}>Cancelar</Button>
